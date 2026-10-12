@@ -75,7 +75,7 @@ fn panel_icon(app: &mut VectorcraftApp, ui: &mut Ui, id: &'static str, label: &s
     if resp.clicked() {
         app.ui.open_panel = if open { None } else { Some(id.to_string()) };
     }
-    crate::panel_docking::legacy_tab(app, ui, id, &resp);
+    crate::panel_docking::legacy_tab(app, ui, id, &resp, false);
 }
 
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
@@ -84,6 +84,7 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     }
     let t = Tokens::get(ui.ctx());
     let shown = floating::shown_tab(&app.ui);
+    ui.ctx().data_mut(|d| d.insert_temp(floating::root_groups_id(), Vec::<floating::RootGroup>::new()));
     // Main tabbed group, unless it is collapsed to icons or all its panels float.
     let group = shown.filter(|_| !app.ui.dock_collapsed).map(|active| {
         egui::Panel::right("dock")
@@ -95,6 +96,15 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                 if collapse_header(ui, false) {
                     toggle(app, true);
                 }
+                // What a group dropped on it joins ([`floating::Drop::Root`]).
+                let rect = ui.available_rect_before_wrap();
+                let group = floating::RootGroup {
+                    panels: floating::docked_tabs(&app.ui).map(|tab| tab.info().0).collect(),
+                    shown: active.info().0,
+                    rect,
+                    strip: Rect::from_min_size(rect.min, vec2(rect.width(), 33.0)),
+                };
+                ui.ctx().data_mut(|d| d.insert_temp(floating::root_groups_id(), vec![group]));
                 if tab_strip(app, ui, active) {
                     // It floats from this frame on.
                     return;
@@ -196,7 +206,7 @@ fn tab_strip(app: &mut VectorcraftApp, ui: &mut Ui, active: DockTab) -> bool {
         if resp.clicked() {
             app.ui.dock_tab = tab;
         }
-        crate::panel_docking::legacy_tab(app, ui, id, &resp);
+        crate::panel_docking::legacy_tab(app, ui, id, &resp, true);
     }
     if let Some(tab) = out.picked.and_then(|i| tabs.get(i)).copied() {
         app.ui.dock_tab = tab;
@@ -308,8 +318,10 @@ pub(crate) fn panel_tabs(
 pub fn floating_panel(app: &mut VectorcraftApp, ctx: &egui::Context) {
     let Some((id, label)) = app.ui.open_panel.as_deref().and_then(|p| crate::state::all_panels().find(|(q, _)| *q == p)) else { return };
     let tab = DockTab::from_id(id);
-    // Expanded, the group shows its panels in the dock itself; a floating panel shows in its group.
-    if tab.is_some() && !app.ui.dock_collapsed || floating::group_of(&app.ui, id).is_some() {
+    // Expanded, the group shows its panels in the dock itself, unless one was dropped on the icon
+    // column; a floating panel shows in its group.
+    let in_rail = app.ui.docking_icons.contains(id) && app.ui.docking.as_ref().is_some_and(|layout| !layout.contains(&id.to_string()));
+    if tab.is_some() && !app.ui.dock_collapsed && !in_rail || floating::group_of(&app.ui, id).is_some() {
         return;
     }
     let t = Tokens::get(ctx);

@@ -4108,6 +4108,8 @@ axis	Both	Оба
 @msg	before must name a panel	before должен указывать панель
 @msg	docking action contains an unknown panel or an excessive split path	Действие прикрепления содержит неизвестную панель или слишком длинный путь разделений
 @msg	group must be true or false	group должен иметь значение true или false
+@msg	icon must be true or false	icon должен быть true или false
+@msg	icon only docks a panel in the icon column, with no anchor	icon только закрепляет панель в столбце значков, без anchor
 @msg	move requires a destination panel	Для перемещения требуется целевая панель
 @msg	move requires an existing destination panel	Для перемещения требуется существующая целевая панель
 @msg	onto must name a floating panel	onto должен указывать плавающую панель
