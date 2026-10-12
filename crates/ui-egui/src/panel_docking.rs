@@ -278,6 +278,16 @@ fn apply_action(app: &mut VectorcraftApp, action: Action<String>) -> Result<Valu
         Action::Activate { panel } => Some(panel.clone()),
         _ => None,
     };
+    // A panel moved, floated or closed leaves its group: that group isn't collapsed any more, and
+    // the panel doesn't take the collapse along.
+    let moved = match &action {
+        Action::Move { panel, .. }
+        | Action::OpenAt { panel, .. }
+        | Action::Open { panel, .. }
+        | Action::Float { panel, .. }
+        | Action::Close { panel } => Some(panel.clone()),
+        _ => None,
+    };
     layout.apply(action).map_err(|error| error.to_string())?;
     restore_float_fallback(&mut layout, fallback)?;
     if let Some((panel, location)) = returning {
@@ -288,6 +298,9 @@ fn apply_action(app: &mut VectorcraftApp, action: Action<String>) -> Result<Valu
     }
     app.ui.docking_icons = icons;
     app.ui.docking = Some(layout);
+    if let Some(panel) = moved {
+        app.ui.docking_collapsed.remove(&panel);
+    }
     if let Some(panel) = activated {
         for group in &mut app.ui.floating_panels {
             if group.panels.contains(&panel) {
@@ -318,6 +331,19 @@ fn dock_groups_shown(ui: &crate::state::UiState) -> Vec<String> {
     out
 }
 
+/// `panel` is a tab of a group of the shared layout's tree (not of an accordion, or floating).
+fn in_tab_group(layout: &Layout<String>, panel: &str) -> bool {
+    let mut pending: Vec<&Node<String>> = layout.root.iter().collect();
+    while let Some(node) = pending.pop() {
+        match node {
+            Node::Tabs { panels, .. } if panels.iter().any(|id| id == panel) => return true,
+            Node::Split { first, second, .. } => pending.extend([second.as_ref(), first.as_ref()]),
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Forget the collapsed groups that show another panel now (another tab clicked, or the panel
 /// moved or closed): those are expanded.
 pub(crate) fn prune_collapsed(ui: &mut crate::state::UiState) {
@@ -337,7 +363,7 @@ fn collapse(app: &mut VectorcraftApp, params: &Value) -> Result<Value, String> {
     }
     match app.ui.docking.as_mut() {
         Some(layout) => {
-            if !(Layout { root: layout.root.clone(), floating: Vec::new() }).contains(&panel.to_string()) {
+            if !in_tab_group(layout, panel) {
                 return Err("panel is not in a dock group".into());
             }
             layout.apply(Action::Activate { panel: panel.into() }).map_err(|e| e.to_string())?;
@@ -601,6 +627,12 @@ fn change(app: &mut VectorcraftApp, operation: &str, params: &Value) -> Result<V
     app.ui.docking = Some(layout);
     app.ui.docking_hidden = hidden;
     app.ui.docking_icons = icons;
+    if operation != "activate" {
+        app.ui.docking_collapsed.remove(panel);
+        for member in &members {
+            app.ui.docking_collapsed.remove(member);
+        }
+    }
     if operation == "activate" {
         for group in &mut app.ui.floating_panels {
             if group.panels.iter().any(|id| id == panel) {

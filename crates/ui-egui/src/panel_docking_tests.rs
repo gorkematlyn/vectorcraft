@@ -868,3 +868,37 @@ fn the_collapse_command_validates_and_survives_a_reload() {
     assert!(app.run("window.panel.collapse", json!({"panel":"layers"})).is_err(), "floating groups collapse with float");
     assert!(app.ui.docking_collapsed.is_empty());
 }
+
+#[test]
+fn a_collapsed_groups_panel_moved_elsewhere_takes_no_collapse_along() {
+    let mut app = app();
+    app.run("window.panel.move", json!({"panel":"swatches", "anchor":"layers", "zone":"top"})).unwrap();
+    app.run("window.panel.collapse", json!({"panel":"layers"})).unwrap();
+    // Layers, shown by the collapsed group, goes to the Swatches group and is shown there.
+    app.run("window.panel.move", json!({"panel":"layers", "anchor":"swatches"})).unwrap();
+    app.run("window.panel.activate", json!({"panel":"layers"})).unwrap();
+    crate::panel_docking::prune_collapsed(&mut app.ui);
+    assert!(app.ui.docking_collapsed.is_empty(), "neither group is collapsed");
+    // The same through a serialized action (a drag).
+    app.run("window.panel.collapse", json!({"panel":"layers"})).unwrap();
+    app.run("window.panel.layout", json!({"action": {"Move": {"panel":"layers", "anchor":"properties", "placement": {"Tab": {"before": null}}}}}))
+        .unwrap();
+    assert!(app.ui.docking_collapsed.is_empty());
+}
+
+#[test]
+fn the_collapse_command_rejects_an_accordion_panel() {
+    let mut app = app();
+    app.ui.docking = Some(Layout {
+        root: Some(Node::Stack {
+            entries: vec![
+                craft_ui::docking::StackEntry { panel: "layers".into(), open: true, height: None },
+                craft_ui::docking::StackEntry { panel: "swatches".into(), open: true, height: None },
+            ],
+        }),
+        floating: Vec::new(),
+    });
+    assert!(valid(app.ui.docking.as_ref().unwrap()));
+    assert!(app.run("window.panel.collapse", json!({"panel":"layers"})).is_err());
+    assert!(app.ui.docking_collapsed.is_empty());
+}
