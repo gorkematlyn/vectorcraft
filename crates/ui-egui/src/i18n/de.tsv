@@ -3290,6 +3290,7 @@ theme	Appearance	Erscheinungsbild
 @msg	its page has text, and its layers have no text objects to put it in	seine Seite enthält Text, und seine Ebenen haben keine Textobjekte, die ihn aufnehmen könnten
 @msg	its type is to come in as outlines, which only its page has	sein Text soll als Pfade übernommen werden, die nur seine Seite enthält
 @msg	the art on them differs from the page's in {_1}% of it	die Grafik darauf weicht in {_1} % von der der Seite ab
+@msg	the art on them differs from the page's in {_1}% of it: they come from its editing data all the same	die Grafik darauf weicht in {_1} % von der der Seite ab: sie stammen trotzdem aus seinen Bearbeitungsdaten
 @msg	`to` must be "corner" or "smooth"	`to` muss "corner" oder "smooth" sein
 @msg	BMP files are RGB or grayscale: colorModel rgb or gray	BMP-Dateien sind RGB oder Graustufen: colorModel rgb oder gray
 @msg	Blend colors: select at least three objects with filled colours	Farben angleichen: Wählen Sie mindestens drei Objekte mit Flächenfarbe aus
@@ -3843,6 +3844,8 @@ theme	Appearance	Erscheinungsbild
 @msg	gradient “{name}” isn't defined in the file: a plain colour stands in for it	der Verlauf „{name}“ ist in der Datei nicht definiert: Eine einfache Farbe steht an seiner Stelle
 @msg	an image VectorCraft can't read was left out	ein Bild, das VectorCraft nicht lesen kann, wurde ausgelassen
 @msg	an image whose data is cut short was left out	ein Bild mit abgeschnittenen Daten wurde ausgelassen
+@msg	linked pictures show the low-resolution preview saved in the file until their files are found: relink them in the Links panel	verknüpfte Bilder zeigen die in der Datei gespeicherte Vorschau in niedriger Auflösung, bis ihre Dateien gefunden werden: Verknüpfen Sie sie im Bedienfeld „Verknüpfungen“ neu
+@msg	area type in frames too short for a line of the font it shows in got taller frames ({_1}): their type wouldn't show otherwise	Flächentext in Rahmen, die für eine Zeile der Schrift, in der er hier erscheint, zu niedrig sind, hat höhere Rahmen bekommen ({_1}): Sonst wäre der Text nicht zu sehen
 @msg	its editing data doesn't say where its art is	seine Bearbeitungsdaten geben nicht an, wo seine Grafik liegt
 @msg	this file was saved without PDF compatibility, and its editing data can't be read ({why})	diese Datei wurde ohne PDF-Kompatibilität gespeichert, und ihre Bearbeitungsdaten können nicht gelesen werden ({why})
 @msg	No fonts are missing in this document	In diesem Dokument fehlen keine Schriften
@@ -4061,6 +4064,7 @@ theme	Appearance	Erscheinungsbild
 	Activate Panel	Bedienfeld aktivieren
 	Change Panel Layout	Bedienfeldanordnung ändern
 	Close Panel	Bedienfeld schließen
+	Collapse Panel Group	Bedienfeldgruppe minimieren
 	Move Panel	Bedienfeld verschieben
 	Group with	Gruppieren mit
 	Resize panel window	Bedienfeldfenster skalieren
@@ -4071,6 +4075,9 @@ theme	Appearance	Erscheinungsbild
 @msg	before must name a panel	before muss ein Bedienfeld benennen
 @msg	docking action contains an unknown panel or an excessive split path	Die Docking-Aktion enthält ein unbekanntes Bedienfeld oder einen zu langen Teilungspfad
 @msg	group must be true or false	group muss true oder false sein
+@msg	panel floats; collapse its group with window.panel.float {collapsed}	Bedienfeld ist abgelöst; seine Gruppe mit window.panel.float {collapsed} minimieren
+@msg	panel is not in a dock group	Bedienfeld ist in keiner Dock-Gruppe
+@msg	only a dock group above or below others collapses, not one beside another	nur eine Dock-Gruppe über oder unter anderen lässt sich minimieren, nicht eine daneben
 @msg	icon must be true or false	icon muss true oder false sein
 @msg	icon only docks a panel in the icon column, with no anchor	icon dockt ein Bedienfeld nur in der Symbolspalte an, ohne anchor
 @msg	move requires a destination panel	Das Verschieben erfordert ein Zielbedienfeld
@@ -4142,6 +4149,8 @@ theme	Appearance	Erscheinungsbild
 @msg	unsupported native docking operation	Nicht unterstützte native Docking-Operation
 	Linux Display Server	Linux-Anzeigeserver
 	X11 (XWayland)	X11 (XWayland)
+	Ruler Origin	Linealursprung
+	Reset Ruler Origin	Linealursprung zurücksetzen
 	Artistic	Kunstfilter
 	Film Grain…	Filmkörnung…
 	Grain	Körnung
@@ -4149,3 +4158,12 @@ theme	Appearance	Erscheinungsbild
 @msg	the compressed file unpacks to more than VectorCraft reads ({_1} MB of document, {_2} MB per image)	die komprimierte Datei entpackt sich auf mehr, als VectorCraft liest ({_1} MB Dokument, {_2} MB pro Bild)
 @msg	the document is too large to save compressed ({0}): save it with Use Compression off	das Dokument ist zu groß, um komprimiert gespeichert zu werden ({0}): speichern Sie es mit deaktivierter Option „Komprimierung verwenden“
 @msg	the file stopped being read (please report this bug)	das Lesen der Datei wurde abgebrochen (bitte melden Sie diesen Fehler)
+	Concentric Dividers:	Konzentrische Trennlinien:
+	Radial Dividers:	Radiale Trennlinien:
+# Grid tool options (the Rectangular Grid and Polar Grid click dialogs).
+	Skew:	Neigung:
+	Inside	Innen
+	Outside	Außen
+	Use Outside Rectangle As Frame	Äußeres Rechteck als Rahmen verwenden
+	Create Compound Path From Ellipses	Zusammengesetzten Pfad aus Ellipsen erstellen
+	Fill Grid	Raster füllen

@@ -79,6 +79,7 @@ fn panel_icon(app: &mut VectorcraftApp, ui: &mut Ui, id: &'static str, label: &s
 }
 
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
+    crate::panel_docking::prune_collapsed(&mut app.ui);
     if crate::panel_docking::show(app, ui) {
         return;
     }
@@ -107,6 +108,10 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
                 ui.ctx().data_mut(|d| d.insert_temp(floating::root_groups_id(), vec![group]));
                 if tab_strip(app, ui, active) {
                     // It floats from this frame on.
+                    return;
+                }
+                // Collapsed to its tabs (a double-click on one).
+                if app.ui.docking_collapsed.contains(app.ui.dock_tab.info().0) {
                     return;
                 }
                 egui::Frame::NONE.inner_margin(egui::Margin { left: 12, right: 10, top: 10, bottom: 8 }).show(ui, |ui| match active {
@@ -177,9 +182,9 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     });
 }
 
-/// The tabbed group's tab strip, showing `active`: a click on a tab shows it, a tab dragged out of
-/// the strip floats on its own, and the strip right of the tabs floats the whole group. True when
-/// the shown panel floats now.
+/// The tabbed group's tab strip, showing `active`: a click on a tab shows it, a double-click
+/// collapses the group to its tabs or expands it, a tab dragged out of the strip floats on its own,
+/// and the strip right of the tabs floats the whole group. True when the shown panel floats now.
 fn tab_strip(app: &mut VectorcraftApp, ui: &mut Ui, active: DockTab) -> bool {
     let t = Tokens::get(ui.ctx());
     let (strip, _) = ui.allocate_exact_size(vec2(ui.available_width(), 33.0), Sense::hover());
@@ -203,7 +208,11 @@ fn tab_strip(app: &mut VectorcraftApp, ui: &mut Ui, active: DockTab) -> bool {
     for (i, resp) in out.responses {
         let Some(&tab) = tabs.get(i) else { continue };
         let id = tab.info().0;
-        if resp.clicked() {
+        if resp.double_clicked() {
+            if let Err(error) = app.run("window.panel.collapse", json!({ "panel": id })) {
+                app.ui.status = error;
+            }
+        } else if resp.clicked() {
             app.ui.dock_tab = tab;
         }
         crate::panel_docking::legacy_tab(app, ui, id, &resp, true);
