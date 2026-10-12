@@ -868,18 +868,26 @@ fn icon_rail(app: &mut VectorcraftApp, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             egui::ScrollArea::vertical().id_salt("shared-panel-icons-scroll").show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                // The tabbed group's panels dropped on the column head it, then the icon panels.
+                // The tabbed group's panels dropped on the column head it, then the icon panels,
+                // then the other panels dropped on it (those the column has no place for).
                 let tabs: Vec<_> = crate::state::DockTab::ALL
                     .into_iter()
                     .map(crate::state::DockTab::info)
                     .filter(|info| app.ui.docking_icons.contains(info.0))
                     .collect();
-                for (id, label, icon) in tabs.into_iter().chain(
-                    crate::state::ICON_PANEL_GROUPS
-                        .iter()
-                        .flat_map(|group| group.iter())
-                        .filter_map(|id| crate::state::ICON_PANELS.iter().find(|entry| entry.0 == *id).copied()),
-                ) {
+                let grouped = |id: &str| crate::state::ICON_PANEL_GROUPS.iter().any(|group| group.contains(&id));
+                let dropped: Vec<_> =
+                    crate::state::ICON_PANELS.iter().filter(|entry| !grouped(entry.0) && app.ui.docking_icons.contains(entry.0)).copied().collect();
+                for (id, label, icon) in tabs
+                    .into_iter()
+                    .chain(
+                        crate::state::ICON_PANEL_GROUPS
+                            .iter()
+                            .flat_map(|group| group.iter())
+                            .filter_map(|id| crate::state::ICON_PANELS.iter().find(|entry| entry.0 == *id).copied()),
+                    )
+                    .chain(dropped)
+                {
                     if app.ui.docking.as_ref().is_some_and(|layout| layout.contains(&id.to_string())) {
                         continue;
                     }

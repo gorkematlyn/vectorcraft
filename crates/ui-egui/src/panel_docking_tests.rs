@@ -742,3 +742,21 @@ fn icon_docking_commands_validate_and_round_trip_through_workspaces() {
     app.run("window.panel", json!({"panel":"layers"})).unwrap();
     assert_eq!(app.ui.open_panel.as_deref(), Some("layers"));
 }
+
+#[test]
+fn a_panel_the_icon_column_has_no_place_for_still_shows_there_once_dropped_on_it() {
+    let mut h = harness(app(), vec2(1280.0, 1600.0));
+    assert!(!crate::state::ICON_PANEL_GROUPS.iter().any(|group| group.contains(&"charStyles")));
+    h.state_mut().run("window.panel.float", json!({"panel":"charStyles","x":300,"y":300})).unwrap();
+    h.run_steps(3);
+    let title =
+        h.ctx.memory(|m| m.area_rect(egui::Id::new("vectorcraft-panel-docking").with(("floating", &"charStyles".to_string())))).unwrap().left_top()
+            + vec2(6.0, 16.0);
+    let column = h.ctx.data(|d| d.get_temp::<egui::Rect>(crate::floating::icons_rect_id())).unwrap();
+    drag(&mut h, title, column.center());
+    assert!(h.state().ui.docking_icons.contains("charStyles"));
+    h.state_mut().ui.open_panel = None;
+    h.run_steps(3);
+    let column = h.ctx.data(|d| d.get_temp::<egui::Rect>(crate::floating::icons_rect_id())).unwrap();
+    assert!(h.query_all_by_label("Character Styles").any(|node| column.contains_rect(node.rect())), "its icon is in the column");
+}
