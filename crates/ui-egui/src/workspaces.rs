@@ -249,8 +249,12 @@ pub fn delete(ui: &mut UiState, name: &str) -> Result<(), String> {
         return Err(if is_builtin(name) { format!("`{name}` is built in and can't be deleted") } else { format!("no workspace `{name}`") });
     }
     ui.workspace_changes.retain(|w| w.name != name);
+    // The current workspace deleted: Essentials (as it was left) takes over, rather than its layout
+    // staying on screen under Essentials's name, to be remembered as Essentials's changes.
     if ui.workspace == name {
-        ui.workspace = ESSENTIALS.into();
+        let essentials =
+            ui.workspace_changes.iter().find(|w| w.name == ESSENTIALS).cloned().or_else(|| find_saved(ui, ESSENTIALS)).unwrap_or_default();
+        apply(ui, &essentials);
     }
     Ok(())
 }
@@ -543,6 +547,19 @@ mod tests {
         switch(&mut ui, ESSENTIALS).unwrap();
         delete(&mut ui, "G").unwrap();
         assert!(ui.workspace_changes.iter().all(|w| w.name != "G"));
+    }
+
+    #[test]
+    fn deleting_the_current_workspace_switches_to_essentials_without_leaking_its_layout() {
+        let mut ui = UiState::default();
+        save_as(&mut ui, "Tmp").unwrap();
+        ui.control_bar = true;
+        delete(&mut ui, "Tmp").unwrap();
+        assert_eq!(ui.workspace, ESSENTIALS);
+        assert!(!ui.control_bar, "Essentials's layout is shown, not the deleted one's");
+        save_as(&mut ui, "Other").unwrap();
+        switch(&mut ui, ESSENTIALS).unwrap();
+        assert!(!ui.control_bar, "Essentials didn't remember the deleted workspace's layout");
     }
 
     #[test]
