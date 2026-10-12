@@ -12,6 +12,7 @@ struct LegacyDrag {
     open_panel: Option<String>,
     floating: Vec<crate::state::FloatingPanels>,
     icons: std::collections::BTreeSet<String>,
+    collapsed: std::collections::BTreeSet<String>,
 }
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ struct RootGroupDrag {
     panel: String,
     layout: Layout<String>,
     hidden: std::collections::BTreeMap<String, craft_ui::docking::Location<String>>,
+    collapsed: std::collections::BTreeSet<String>,
     generation: u64,
 }
 
@@ -30,6 +32,7 @@ fn cancel_legacy_drag(app: &mut VectorcraftApp, ctx: &egui::Context) -> bool {
         app.ui.floating_panels = previous.floating;
         app.ui.docking = previous.layout;
         app.ui.docking_icons = previous.icons;
+        app.ui.docking_collapsed = previous.collapsed;
         craft_ui::docking::cancel_drag::<String>(ctx, egui::Id::new("vectorcraft-panel-docking"));
         true
     } else {
@@ -703,6 +706,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                             panel: active.clone(),
                             layout: self.app.ui.docking.clone().unwrap_or_else(|| legacy(self.app)),
                             hidden: self.app.ui.docking_hidden.clone(),
+                            collapsed: self.app.ui.docking_collapsed.clone(),
                             generation: self.app.ui.docking_generation,
                         },
                     )
@@ -790,6 +794,7 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
         } else if ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape)) {
             app.ui.docking = Some(drag.layout);
             app.ui.docking_hidden = drag.hidden;
+            app.ui.docking_collapsed = drag.collapsed;
             sync_legacy(app);
             ui.ctx().data_mut(|data| data.remove::<RootGroupDrag>(root_key));
         } else if let Some(pos) = ui.input(|input| input.pointer.interact_pos()) {
@@ -1134,6 +1139,7 @@ pub(crate) fn legacy_tab(app: &mut VectorcraftApp, ui: &mut egui::Ui, panel: &st
                         open_panel: app.ui.open_panel.clone(),
                         floating: app.ui.floating_panels.clone(),
                         icons: app.ui.docking_icons.clone(),
+                        collapsed: app.ui.docking_collapsed.clone(),
                     },
                 )
             });

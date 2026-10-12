@@ -902,3 +902,28 @@ fn the_collapse_command_rejects_an_accordion_panel() {
     assert!(app.run("window.panel.collapse", json!({"panel":"layers"})).is_err());
     assert!(app.ui.docking_collapsed.is_empty());
 }
+
+#[test]
+fn escape_on_a_collapsed_groups_drag_leaves_it_collapsed() {
+    let mut app = app();
+    app.run("window.panel.move", json!({"panel":"swatches", "anchor":"layers", "zone":"top"})).unwrap();
+    app.run("window.panel.collapse", json!({"panel":"layers"})).unwrap();
+    let mut h = harness(app, vec2(1280.0, 800.0));
+    let groups = root_groups(&h);
+    let lower = groups.iter().find(|g| g.panels.contains(&"layers")).unwrap().strip;
+    // The grip right of the lower group's tabs, dragged out of the dock, then Escape.
+    let from = lower.right_center() - vec2(50.0, 0.0);
+    h.event(Event::PointerMoved(from));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    for step in 1..=6 {
+        h.event(Event::PointerMoved(from - vec2(80.0 * step as f32, 0.0)));
+        h.run_steps(1);
+    }
+    assert!(h.state().ui.docking.as_ref().unwrap().floating.iter().any(|g| g.panels.contains(&"layers".into())), "the group floats mid-drag");
+    h.event(Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    assert!(h.state().ui.docking.as_ref().unwrap().floating.is_empty(), "back in the dock");
+    assert!(h.state().ui.docking_collapsed.contains("layers"), "and still collapsed");
+}
