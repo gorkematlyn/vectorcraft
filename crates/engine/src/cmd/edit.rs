@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 use vectorcraft_doc::{Document, Node, NodeId, Unit};
-use vectorcraft_geom::{Affine, Vec2};
+use vectorcraft_geom::{Affine, Point, Vec2};
 
 use super::clipboard::SwatchChoices;
 use super::*;
@@ -24,7 +24,7 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         cmd!("file.close", "Close", ["File"], Some("Cmd+W"), "{index?}", has_doc, file_close),
         cmd!("document.activate", "Activate Document", [], None, "{index}", always, doc_activate),
-        cmd!(query "document.inspect", "Inspect Document", [], None, "{depth?, childLimit?} → layer tree, artboards, selection, history (a sliced tree reports childCount)", has_doc, |s, p| Ok(inspect::document_opts(s, slice_opts(p, "document.inspect")?))),
+        cmd!(query "document.inspect", "Inspect Document", [], None, "{depth?, childLimit?} → layer tree (each node: id, name, kind, visible, locked, bounds, opacity when below 1, blend when not Normal, fill, stroke and strokeWidth of objects and compound paths; a compound path's members have compoundMember: true instead of paint, which is the compound's), artboards, selection, history (a sliced tree reports childCount)", has_doc, |s, p| Ok(inspect::document_opts(s, slice_opts(p, "document.inspect")?))),
         cmd!(query "document.node", "Inspect Object", [], None, "{id, summary?: compact summary, depth?: child levels in the summary (default all), childLimit?: children shown per node (default all; a level that shows fewer reports childCount)} → one object", has_doc, doc_node),
         cmd!(query "document.find", "Find Objects", [], None, "{name?: substring of the Layers panel name, kind?: panel label such as Group, Path, Type or Image (exact), text?: substring of type content, limit?: max matches (default 100, 0 counts only)} → {matches: [{id, name, kind, path}], total}", has_doc, doc_find),
         cmd!(query "document.json", "Document JSON", [], None, "{} → complete document model", has_doc, |s, _| Ok(serde_json::to_value(&*s.doc()?.doc).unwrap_or(Value::Null))),
@@ -36,6 +36,25 @@ pub fn specs() -> Vec<CommandSpec> {
             "{units: \"Points\"|\"Picas\"|\"Inches\"|\"Millimeters\"|\"Centimeters\"|\"Pixels\"|\"Feet & Inches\"|\"Meters\"|\"Yards\"|\"Feet\"} the document's units: every length the UI shows and reads (General)",
             has_doc,
             set_units
+        ),
+        cmd!(query "document.rulerOrigin", "Ruler Origin", [], None, "{} → {x, y} the rulers' zero point, in absolute document points", has_doc, |s, _| Ok(json!(s.doc()?.doc.ruler_origin))),
+        cmd!(
+            "document.setRulerOrigin",
+            "Ruler Origin",
+            [],
+            None,
+            "{x, y} set the rulers' zero point in absolute document points; art, guides and command coordinates stay in place",
+            has_doc,
+            set_ruler_origin
+        ),
+        cmd!(
+            "document.resetRulerOrigin",
+            "Reset Ruler Origin",
+            [],
+            None,
+            "{artboard?: index=0} reset the rulers' zero point to that artboard's top-left corner",
+            has_doc,
+            reset_ruler_origin
         ),
         cmd!("edit.undo", "Undo", ["Edit"], Some("Cmd+Z"), "{}", can_undo, undo),
         cmd!("edit.redo", "Redo", ["Edit"], Some("Cmd+Shift+Z"), "{}", can_redo, redo),
@@ -132,20 +151,22 @@ fn doc_activate(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn doc_node(s: &mut Session, p: &Value) -> Result<Value> {
     let id = id_param(p, "id").ok_or_else(|| bad("document.node", "missing id"))?;
-    let opts = slice_opts(p, "document.node")?;
+    let mut opts = slice_opts(p, "document.node")?;
     let summary = bool_or(p, "summary", false);
     if !summary && (opts.depth.is_some() || opts.child_limit.is_some()) {
         // The full object JSON is never truncated: a slice without `summary` would
         // otherwise silently return the whole subtree.
         return Err(bad("document.node", "`depth` and `childLimit` slice the summary: pass `summary: true`"));
     }
-    let n = s.doc()?.doc.node(id).ok_or(EngineError::NoNode(id))?;
+    let doc = &s.doc()?.doc;
+    let n = doc.node(id).ok_or(EngineError::NoNode(id))?;
+    opts.compound_member = doc.parent_of(id).and_then(|p| doc.node(p)).is_some_and(|p| matches!(p.kind, vectorcraft_doc::NodeKind::Compound { .. }));
     if summary { Ok(inspect::node_summary_opts(n, opts)) } else { Ok(serde_json::to_value(n).unwrap_or(Value::Null)) }
 }
 
 /// `depth` / `childLimit` for a summary read: absent (or null) means no limit.
 fn slice_opts(p: &Value, cmd: &str) -> Result<inspect::SummaryOpts> {
-    Ok(inspect::SummaryOpts { depth: opt_u64(p, cmd, "depth")?, child_limit: opt_u64(p, cmd, "childLimit")? })
+    Ok(inspect::SummaryOpts { depth: opt_u64(p, cmd, "depth")?, child_limit: opt_u64(p, cmd, "childLimit")?, compound_member: false })
 }
 
 /// An optional count: absent (or null) is `None`; a present value that is not a
@@ -178,6 +199,35 @@ fn set_units(s: &mut Session, p: &Value) -> Result<Value> {
     let u = str_param(p, "units").and_then(Unit::named).ok_or_else(|| bad("document.setUnits", "unknown units"))?;
     s.set_document_units(u)?;
     ok()
+}
+
+fn set_ruler_origin(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "document.setRulerOrigin";
+    let origin = Point::new(f64_req(p, "x", C)?, f64_req(p, "y", C)?);
+    change_ruler_origin(s, origin, "Ruler Origin")
+}
+
+fn reset_ruler_origin(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "document.resetRulerOrigin";
+    let index = match p.get("artboard") {
+        None => 0,
+        Some(v) => v.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| bad(C, "index out of range"))?,
+    };
+    let ab = s.doc()?.doc.artboards.get(index).ok_or_else(|| bad(C, "index out of range"))?;
+    change_ruler_origin(s, Point::new(ab.rect.x0, ab.rect.y0), "Reset Ruler Origin")
+}
+
+fn change_ruler_origin(s: &mut Session, origin: Point, label: &str) -> Result<Value> {
+    if !origin.is_finite() || origin.x.abs() > crate::MAX_COORD || origin.y.abs() > crate::MAX_COORD {
+        return Err(EngineError::Other("result would exceed the canvas (coordinates out of range)".into()));
+    }
+    if s.doc()?.doc.ruler_origin != origin {
+        s.edit(label, |d, _| {
+            d.ruler_origin = origin;
+            Ok(())
+        })?;
+    }
+    Ok(json!(origin))
 }
 
 /// A typing session in progress (the Type tool previews the whole session as one interaction).
@@ -334,9 +384,7 @@ fn clear(s: &mut Session, p: &Value) -> Result<Value> {
         return ok();
     }
     s.edit("Clear", |d, sel| {
-        for id in &ids {
-            d.remove(*id)?;
-        }
+        d.remove_many(&ids)?;
         if with_guides {
             let gone = sel.guides.clone();
             d.retain_guides(sel, |i, _| !gone.contains(&i));
@@ -510,16 +558,35 @@ fn duplicate(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({ "ids": ids.iter().map(|i| i.0).collect::<Vec<_>>() }))
 }
 
-/// Duplicate `roots` directly above each original, transform the copies, select them.
+/// Duplicate `roots` directly above each original, transform the copies, select them. The copies
+/// take new ids in the order of `roots`. Roots listed twice, or inside another root, are copied one
+/// at a time: each copy is made from the document as the copies before it left it.
 pub(crate) fn duplicate_in(d: &mut Document, sel: &mut vectorcraft_doc::Selection, roots: &[NodeId], xf: Affine) -> Result<Vec<NodeId>> {
-    let mut out = vec![];
-    for id in roots {
-        let Some((par, idx, _)) = d.position(*id) else { continue };
-        let Some(n) = d.node(*id).cloned() else { continue };
-        let mut c = d.reid(&n);
-        c.transform(xf, true);
-        out.push(d.insert(par, idx + 1, c)?);
-    }
+    let paths = d.index_paths(roots.iter().copied());
+    let mut found: Vec<_> = roots.iter().filter_map(|id| paths.get(id)).collect();
+    found.sort_unstable();
+    let out = if found.windows(2).all(|w| !w[1].starts_with(w[0])) {
+        let mut copies = Vec::with_capacity(roots.len());
+        for id in roots {
+            let Some(n) = paths.get(id).and_then(|p| d.node_at(p)).cloned() else { continue };
+            let mut c = d.reid(&n);
+            c.transform(xf, true);
+            copies.push((*id, vec![c]));
+        }
+        let out: Vec<NodeId> = copies.iter().flat_map(|(_, c)| c.iter().map(|n| n.id)).collect();
+        d.insert_beside(copies, false)?;
+        out
+    } else {
+        let mut out = vec![];
+        for id in roots {
+            let Some((par, idx, _)) = d.position(*id) else { continue };
+            let Some(n) = d.node(*id).cloned() else { continue };
+            let mut c = d.reid(&n);
+            c.transform(xf, true);
+            out.push(d.insert(par, idx + 1, c)?);
+        }
+        out
+    };
     sel.set(out.iter().copied());
     Ok(out)
 }

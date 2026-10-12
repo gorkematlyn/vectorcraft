@@ -148,21 +148,24 @@ pub fn load(name: &str, bytes: &[u8]) -> Result<Loaded> {
     load_with(name, bytes, &LoadOptions::default())
 }
 
-/// A PDF-compatible `.ai` read through the editor's own copy of its art, which it carries: its
-/// layers and hidden objects as they were, and the art outside its artboard (its PDF part has
-/// only what is on the artboards), as an EPS of the editor is read. Anything else as it was.
+/// A PDF-compatible `.ai`, or a PDF saved with the editing data, read through the editor's own copy
+/// of its art, which it carries: its layers and hidden objects as they were, and the art outside
+/// its artboard (its PDF part has only what is on the artboards), as an EPS of the editor is read.
+/// Anything else as it was.
 fn through_editing_data(bytes: &[u8], opts: &LoadOptions, doc: Document, warnings: Vec<String>) -> (Document, Vec<String>) {
     if opts.pages.is_some() || !opts.layers || !opts.editing_data {
         return (doc, warnings);
     }
     let Some(private) = vectorcraft_pdf::illustrator_data(bytes, opts.password.as_deref()) else { return (doc, warnings) };
     let outlined = opts.text_as == vectorcraft_pdf::TextAs::Outlines;
-    let (doc, mut warnings) = vectorcraft_eps::layered_ai(&private, doc, warnings, outlined);
-    // The note that the art outside the artboard is lost is the reason the layers weren't read.
-    if warnings.iter().any(|w| w.starts_with("the file's layers weren't read from its editing data")) {
+    let (doc, mut warnings, read) = vectorcraft_eps::layered_ai(&private, doc, warnings, outlined, opts.trust_editing_data);
+    // The layers weren't read (or couldn't be): the notes of reading the PDF part still hold.
+    if !read {
         return (doc, warnings);
     }
-    warnings.retain(|w| w != vectorcraft_pdf::OFF_ARTBOARD_NOTE);
+    // The layers hold the art that the PDF part leaves out or, in a PDF, that the import clipped
+    // to the page.
+    warnings.retain(|w| w != vectorcraft_pdf::OFF_ARTBOARD_NOTE && w != vectorcraft_pdf::PAST_PAGE_NOTE);
     (doc, warnings)
 }
 
@@ -218,8 +221,13 @@ pub fn load_with(name: &str, bytes: &[u8], opts: &LoadOptions) -> Result<Loaded>
                 .then(|| vectorcraft_pdf::editing_with(bytes, opts.password.as_deref()))
                 .flatten()
                 .map(|e| (e.intact, move || Some(e.data)));
-            restore_or_import(editing, || match super::pdfimport::import(bytes, opts) {
-                Ok((doc, warnings)) => Ok(through_editing_data(bytes, opts, doc, warnings)),
+            restore_or_import(editing, || match super::pdfimport::import(bytes, opts, format.id != "pdf") {
+                Ok(r) => {
+                    // Pages of text alone: the editing copy alone where it reads, as for a file
+                    // saved without its PDF part (#1387: else the page, which is the art).
+                    let alone = r.only_text.then(|| from_editing_data_alone(bytes, opts)).flatten().and_then(|read| read.ok());
+                    Ok(alone.unwrap_or_else(|| through_editing_data(bytes, opts, r.document, r.warnings)))
+                }
                 // Saved without its PDF part: the editing copy is all the file has.
                 Err(e) if e.to_string() == vectorcraft_pdf::PdfError::PlaceholderOnly.to_string() => {
                     from_editing_data_alone(bytes, opts).unwrap_or(Err(e))

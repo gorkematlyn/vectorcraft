@@ -483,6 +483,12 @@ impl DocState {
         {
             return Some(i);
         }
+        // A single object isolated: new art goes beside it, in its group or layer.
+        if let Some(p) = self.isolation.filter(|i| self.doc.node(*i).is_some_and(|n| !n.is_container())).and_then(|i| self.doc.parent_of(i))
+            && self.doc.node(p).is_some_and(|n| matches!(n.kind, NodeKind::Group { .. } | NodeKind::Layer { .. }))
+        {
+            return Some(p);
+        }
         // A sublayer takes new art only while it and the layers around it are shown and unlocked.
         self.active_layer.filter(|l| self.doc.node(*l).is_some_and(|n| n.is_layer()) && self.doc.is_editable(*l)).or_else(|| self.doc.default_layer())
     }
@@ -556,10 +562,15 @@ fn strip_replay_only(id: &str, p: &mut Value) {
 /// have finite, in-range geometry, so saved files always reload and renderers never see NaN/∞.
 fn doc_sane(d: &Document, sel: &Selection) -> bool {
     let ok = |r: vectorcraft_geom::Rect| [r.x0, r.y0, r.x1, r.y1].iter().all(|v| v.is_finite() && v.abs() <= MAX_COORD);
-    d.artboards.iter().all(|a| ok(a.rect)) && d.guides.iter().all(|g| g.pos.is_finite() && g.pos.abs() <= MAX_COORD) && {
-        let paths = d.index_paths(sel.objects.iter().copied());
-        sel.objects.iter().all(|id| paths.get(id).and_then(|p| d.node_at(p)).and_then(|n| n.geometric_bounds()).is_none_or(ok))
-    }
+    d.ruler_origin.is_finite()
+        && d.ruler_origin.x.abs() <= MAX_COORD
+        && d.ruler_origin.y.abs() <= MAX_COORD
+        && d.artboards.iter().all(|a| ok(a.rect))
+        && d.guides.iter().all(|g| g.pos.is_finite() && g.pos.abs() <= MAX_COORD)
+        && {
+            let paths = d.index_paths(sel.objects.iter().copied());
+            sel.objects.iter().all(|id| paths.get(id).and_then(|p| d.node_at(p)).and_then(|n| n.geometric_bounds()).is_none_or(ok))
+        }
 }
 
 /// Where new art goes (Illustrator's drawing modes, Shift+D cycles).
@@ -1728,6 +1739,8 @@ mod tests_journal;
 mod tests_knockout;
 #[cfg(test)]
 mod tests_labspots;
+#[cfg(test)]
+mod tests_large_edits;
 #[cfg(test)]
 mod tests_layerclip;
 #[cfg(test)]
