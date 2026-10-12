@@ -909,6 +909,9 @@ fn escape_on_a_collapsed_groups_drag_leaves_it_collapsed() {
     app.run("window.panel.move", json!({"panel":"swatches", "anchor":"layers", "zone":"top"})).unwrap();
     app.run("window.panel.collapse", json!({"panel":"layers"})).unwrap();
     let mut h = harness(app, vec2(1280.0, 800.0));
+    // An icon panel's flyout is open too.
+    h.state_mut().ui.open_panel = Some("color".into());
+    h.run_steps(2);
     let groups = root_groups(&h);
     let lower = groups.iter().find(|g| g.panels.contains(&"layers")).unwrap().strip;
     // The grip right of the lower group's tabs, dragged out of the dock, then Escape.
@@ -926,4 +929,5 @@ fn escape_on_a_collapsed_groups_drag_leaves_it_collapsed() {
     h.run_steps(3);
     assert!(h.state().ui.docking.as_ref().unwrap().floating.is_empty(), "back in the dock");
     assert!(h.state().ui.docking_collapsed.contains("layers"), "and still collapsed");
+    assert_eq!(h.state().ui.open_panel.as_deref(), Some("color"), "the flyout is back");
 }

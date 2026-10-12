@@ -21,6 +21,7 @@ struct RootGroupDrag {
     layout: Layout<String>,
     hidden: std::collections::BTreeMap<String, craft_ui::docking::Location<String>>,
     collapsed: std::collections::BTreeSet<String>,
+    open_panel: Option<String>,
     generation: u64,
 }
 
@@ -707,6 +708,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                             layout: self.app.ui.docking.clone().unwrap_or_else(|| legacy(self.app)),
                             hidden: self.app.ui.docking_hidden.clone(),
                             collapsed: self.app.ui.docking_collapsed.clone(),
+                            open_panel: self.app.ui.open_panel.clone(),
                             generation: self.app.ui.docking_generation,
                         },
                     )
@@ -795,6 +797,7 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
             app.ui.docking = Some(drag.layout);
             app.ui.docking_hidden = drag.hidden;
             app.ui.docking_collapsed = drag.collapsed;
+            app.ui.open_panel = drag.open_panel;
             sync_legacy(app);
             ui.ctx().data_mut(|data| data.remove::<RootGroupDrag>(root_key));
         } else if let Some(pos) = ui.input(|input| input.pointer.interact_pos()) {
