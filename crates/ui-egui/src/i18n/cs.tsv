@@ -4189,6 +4189,7 @@ effect	Regular	Pravidelný
 @msg	group must be true or false	group musí být true nebo false
 @msg	panel floats; collapse its group with window.panel.float {collapsed}	panel je plovoucí; jeho skupinu sbalíte pomocí window.panel.float {collapsed}
 @msg	panel is not in a dock group	panel není ve skupině doku
+@msg	only a dock group above or below others collapses, not one beside another	sbalit lze jen skupinu doku nad nebo pod jinými, ne vedle jiné
 @msg	icon must be true or false	icon musí být true nebo false
 @msg	icon only docks a panel in the icon column, with no anchor	icon jen ukotví panel ve sloupci ikon, bez anchor
 @msg	move requires a destination panel	přesun vyžaduje cílový panel

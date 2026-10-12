@@ -4077,6 +4077,7 @@ theme	Appearance	Erscheinungsbild
 @msg	group must be true or false	group muss true oder false sein
 @msg	panel floats; collapse its group with window.panel.float {collapsed}	Bedienfeld ist abgelöst; seine Gruppe mit window.panel.float {collapsed} minimieren
 @msg	panel is not in a dock group	Bedienfeld ist in keiner Dock-Gruppe
+@msg	only a dock group above or below others collapses, not one beside another	nur eine Dock-Gruppe über oder unter anderen lässt sich minimieren, nicht eine daneben
 @msg	icon must be true or false	icon muss true oder false sein
 @msg	icon only docks a panel in the icon column, with no anchor	icon dockt ein Bedienfeld nur in der Symbolspalte an, ohne anchor
 @msg	move requires a destination panel	Das Verschieben erfordert ein Zielbedienfeld

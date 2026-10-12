@@ -931,3 +931,18 @@ fn escape_on_a_collapsed_groups_drag_leaves_it_collapsed() {
     assert!(h.state().ui.docking_collapsed.contains("layers"), "and still collapsed");
     assert_eq!(h.state().ui.open_panel.as_deref(), Some("color"), "the flyout is back");
 }
+
+#[test]
+fn a_group_beside_another_does_not_collapse() {
+    let mut app = app();
+    app.run("window.panel.move", json!({"panel":"swatches", "anchor":"layers", "zone":"left"})).unwrap();
+    let before = app.ui.docking.clone();
+    assert!(app.run("window.panel.collapse", json!({"panel":"swatches"})).is_err());
+    assert!(app.run("window.panel.collapse", json!({"panel":"properties"})).is_err());
+    assert_eq!(app.ui.docking, before, "refused without a change");
+    assert!(app.ui.docking_collapsed.is_empty());
+    // One left collapsed by an earlier layout (a hand-edited file) is expanded.
+    app.ui.docking_collapsed.insert("swatches".into());
+    crate::panel_docking::prune_collapsed(&mut app.ui);
+    assert!(app.ui.docking_collapsed.is_empty());
+}

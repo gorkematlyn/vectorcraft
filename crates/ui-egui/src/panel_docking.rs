@@ -317,35 +317,45 @@ fn apply_action(app: &mut VectorcraftApp, action: Action<String>) -> Result<Valu
     Ok(json!({"layout": app.ui.docking}))
 }
 
-/// The panels the dock's groups show: each group of the shared layout's tree, or the tabbed group
-/// of the legacy dock.
+/// The panels shown by the dock's groups that can collapse to their tabs: each group of the shared
+/// layout's tree that is the whole tree or above or below another (one beside another can't be
+/// shorter than it), or the tabbed group of the legacy dock.
 fn dock_groups_shown(ui: &crate::state::UiState) -> Vec<String> {
     let Some(layout) = &ui.docking else {
         return crate::floating::shown_tab(ui).map(|tab| tab.info().0.to_string()).into_iter().collect();
     };
     let mut out = Vec::new();
-    let mut pending: Vec<&Node<String>> = layout.root.iter().collect();
-    while let Some(node) = pending.pop() {
+    // Each node, and whether it may be shortened (the root, or in a top/bottom split).
+    let mut pending: Vec<(&Node<String>, bool)> = layout.root.iter().map(|root| (root, true)).collect();
+    while let Some((node, shortens)) = pending.pop() {
         match node {
-            Node::Tabs { panels, active } => out.extend(panels.get(*active).cloned()),
-            Node::Split { first, second, .. } => pending.extend([second.as_ref(), first.as_ref()]),
-            Node::Stack { .. } => {}
+            Node::Tabs { panels, active } if shortens => out.extend(panels.get(*active).cloned()),
+            Node::Split { axis, first, second, .. } => {
+                let vertical = *axis == craft_ui::layout::SplitAxis::Vertical;
+                pending.extend([(second.as_ref(), vertical), (first.as_ref(), vertical)]);
+            }
+            _ => {}
         }
     }
     out
 }
 
-/// `panel` is a tab of a group of the shared layout's tree (not of an accordion, or floating).
-fn in_tab_group(layout: &Layout<String>, panel: &str) -> bool {
-    let mut pending: Vec<&Node<String>> = layout.root.iter().collect();
-    while let Some(node) = pending.pop() {
+/// Whether the group of the shared layout's tree holding `panel` as a tab can be shortened to its
+/// tabs (the whole tree, or above or below another group); `None` when `panel` isn't a tab of one
+/// (it floats, or is in an accordion).
+fn tab_group_shortens(layout: &Layout<String>, panel: &str) -> Option<bool> {
+    let mut pending: Vec<(&Node<String>, bool)> = layout.root.iter().map(|root| (root, true)).collect();
+    while let Some((node, shortens)) = pending.pop() {
         match node {
-            Node::Tabs { panels, .. } if panels.iter().any(|id| id == panel) => return true,
-            Node::Split { first, second, .. } => pending.extend([second.as_ref(), first.as_ref()]),
+            Node::Tabs { panels, .. } if panels.iter().any(|id| id == panel) => return Some(shortens),
+            Node::Split { axis, first, second, .. } => {
+                let vertical = *axis == craft_ui::layout::SplitAxis::Vertical;
+                pending.extend([(second.as_ref(), vertical), (first.as_ref(), vertical)]);
+            }
             _ => {}
         }
     }
-    false
+    None
 }
 
 /// Forget the collapsed groups that show another panel now (another tab clicked, or the panel
@@ -367,8 +377,10 @@ fn collapse(app: &mut VectorcraftApp, params: &Value) -> Result<Value, String> {
     }
     match app.ui.docking.as_mut() {
         Some(layout) => {
-            if !in_tab_group(layout, panel) {
-                return Err("panel is not in a dock group".into());
+            match tab_group_shortens(layout, panel) {
+                None => return Err("panel is not in a dock group".into()),
+                Some(false) => return Err("only a dock group above or below others collapses, not one beside another".into()),
+                Some(true) => {}
             }
             layout.apply(Action::Activate { panel: panel.into() }).map_err(|e| e.to_string())?;
             sync_legacy(app);
@@ -418,7 +430,6 @@ fn collapse_node(
                 (SplitAxis::Vertical, Some(ha), Some(hb)) => (Some(SplitSize::FixedFirst(ha)), Some(ha + hb + gap)),
                 (SplitAxis::Vertical, Some(ha), None) => (Some(SplitSize::FixedFirst(ha)), None),
                 (SplitAxis::Vertical, None, Some(hb)) => (Some(SplitSize::FixedSecond(hb)), None),
-                (SplitAxis::Horizontal, Some(ha), Some(hb)) => (None, Some(ha.max(hb))),
                 _ => (None, None),
             };
             if sized.is_some() {

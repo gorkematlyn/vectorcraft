@@ -4089,6 +4089,7 @@ effect	Vertical	세로
 @msg	group must be true or false	group은 true 또는 false여야 합니다
 @msg	panel floats; collapse its group with window.panel.float {collapsed}	패널이 분리되어 있습니다. 그룹은 window.panel.float {collapsed}로 접으세요
 @msg	panel is not in a dock group	패널이 도크 그룹에 없습니다
+@msg	only a dock group above or below others collapses, not one beside another	다른 그룹의 위나 아래에 있는 도크 그룹만 접을 수 있으며, 옆에 있는 그룹은 접을 수 없습니다
 @msg	icon must be true or false	icon은 true 또는 false여야 합니다
 @msg	icon only docks a panel in the icon column, with no anchor	icon은 anchor 없이 패널을 아이콘 열에만 도킹합니다
 @msg	move requires a destination panel	move에는 대상 패널이 필요합니다

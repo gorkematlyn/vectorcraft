@@ -4100,6 +4100,7 @@ axis	Both	Обидві
 @msg	group must be true or false	group має мати значення true або false
 @msg	panel floats; collapse its group with window.panel.float {collapsed}	панель від’єднана; згорніть її групу через window.panel.float {collapsed}
 @msg	panel is not in a dock group	панель не входить до групи дока
+@msg	only a dock group above or below others collapses, not one beside another	згорнути можна лише групу дока над або під іншими, а не поруч з ними
 @msg	icon must be true or false	icon має бути true або false
 @msg	icon only docks a panel in the icon column, with no anchor	icon лише закріплює панель у стовпці значків, без anchor
 @msg	move requires a destination panel	Для переміщення потрібна цільова панель

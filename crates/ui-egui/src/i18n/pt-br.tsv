@@ -3657,6 +3657,7 @@ axis	Both	Ambos
 @msg	group must be true or false	group deve ser true ou false
 @msg	panel floats; collapse its group with window.panel.float {collapsed}	o painel está flutuando; recolha o grupo com window.panel.float {collapsed}
 @msg	panel is not in a dock group	o painel não está em um grupo do encaixe
+@msg	only a dock group above or below others collapses, not one beside another	só um grupo do encaixe acima ou abaixo de outros é recolhido, não um ao lado
 @msg	icon must be true or false	icon deve ser true ou false
 @msg	icon only docks a panel in the icon column, with no anchor	icon apenas encaixa um painel na coluna de ícones, sem anchor
 @msg	move requires a destination panel	mover exige um painel de destino

@@ -4113,6 +4113,7 @@ effect	Vertical	垂直
 @msg	group must be true or false	group は true または false にしてください
 @msg	panel floats; collapse its group with window.panel.float {collapsed}	パネルはフローティング中です。グループは window.panel.float {collapsed} で折りたたんでください
 @msg	panel is not in a dock group	パネルはドックのグループにありません
+@msg	only a dock group above or below others collapses, not one beside another	折りたためるのは他のグループの上下にあるドックのグループだけで、横に並んだグループは折りたためません
 @msg	icon must be true or false	icon は true または false である必要があります
 @msg	icon only docks a panel in the icon column, with no anchor	icon はパネルをアイコン列にのみドッキングします（anchor なし）
 @msg	move requires a destination panel	移動先のパネルを指定してください
