@@ -164,6 +164,9 @@ fn placement(params: &Value) -> Result<Placement<String>, String> {
 }
 
 pub(crate) fn command(app: &mut VectorcraftApp, id: &str, params: &Value) -> Option<Result<Value, String>> {
+    if id == "window.panel.collapse" {
+        return Some(collapse(app, params));
+    }
     // Docking into the dock's tree or its icon column is the shared layout's, whatever set the
     // panel floats in.
     let into_tree = id == "window.panel.dock" && (params.get("anchor").is_some() || params.get("icon").is_some());
@@ -295,6 +298,106 @@ fn apply_action(app: &mut VectorcraftApp, action: Action<String>) -> Result<Valu
     sync_legacy(app);
     app.ui.open_panel = None;
     Ok(json!({"layout": app.ui.docking}))
+}
+
+/// The panels the dock's groups show: each group of the shared layout's tree, or the tabbed group
+/// of the legacy dock.
+fn dock_groups_shown(ui: &crate::state::UiState) -> Vec<String> {
+    let Some(layout) = &ui.docking else {
+        return crate::floating::shown_tab(ui).map(|tab| tab.info().0.to_string()).into_iter().collect();
+    };
+    let mut out = Vec::new();
+    let mut pending: Vec<&Node<String>> = layout.root.iter().collect();
+    while let Some(node) = pending.pop() {
+        match node {
+            Node::Tabs { panels, active } => out.extend(panels.get(*active).cloned()),
+            Node::Split { first, second, .. } => pending.extend([second.as_ref(), first.as_ref()]),
+            Node::Stack { .. } => {}
+        }
+    }
+    out
+}
+
+/// Forget the collapsed groups that show another panel now (another tab clicked, or the panel
+/// moved or closed): those are expanded.
+pub(crate) fn prune_collapsed(ui: &mut crate::state::UiState) {
+    if ui.docking_collapsed.is_empty() {
+        return;
+    }
+    let shown = dock_groups_shown(ui);
+    ui.docking_collapsed.retain(|id| shown.contains(id));
+}
+
+/// `window.panel.collapse`: show the dock group holding `panel` as its tabs only, or expanded.
+fn collapse(app: &mut VectorcraftApp, params: &Value) -> Result<Value, String> {
+    let panel = params.get("panel").and_then(Value::as_str).and_then(normalize).ok_or("panel must name a registered panel")?;
+    let collapsed = crate::menus::opt_bool(params, "collapsed")?;
+    if crate::floating::group_of(&app.ui, panel).is_some() {
+        return Err("panel floats; collapse its group with window.panel.float {collapsed}".into());
+    }
+    match app.ui.docking.as_mut() {
+        Some(layout) => {
+            if !(Layout { root: layout.root.clone(), floating: Vec::new() }).contains(&panel.to_string()) {
+                return Err("panel is not in a dock group".into());
+            }
+            layout.apply(Action::Activate { panel: panel.into() }).map_err(|e| e.to_string())?;
+            sync_legacy(app);
+        }
+        None => {
+            let tab = crate::state::DockTab::from_id(panel)
+                .filter(|_| crate::floating::docked_tabs(&app.ui).any(|t| t.info().0 == panel))
+                .ok_or("panel is not in a dock group")?;
+            app.ui.dock_tab = tab;
+        }
+    }
+    prune_collapsed(&mut app.ui);
+    let now = collapsed.unwrap_or(!app.ui.docking_collapsed.contains(panel));
+    if now {
+        app.ui.docking_collapsed.insert(panel.into());
+    } else {
+        app.ui.docking_collapsed.remove(panel);
+    }
+    Ok(json!({"panel": panel, "collapsed": now}))
+}
+
+/// `node` as drawn with its collapsed groups (showing a panel in `collapsed`) as tall as their
+/// tabs in a top/bottom split. The paths of the splits so sized go in `fixed`, the panels of
+/// collapsed groups in `members`. Also returns the node's height when it is only collapsed groups.
+fn collapse_node(
+    node: &Node<String>,
+    collapsed: &std::collections::BTreeSet<String>,
+    (tab, gap): (f32, f32),
+    path: &mut Vec<bool>,
+    fixed: &mut Vec<Vec<bool>>,
+    members: &mut std::collections::BTreeSet<String>,
+) -> (Node<String>, Option<f32>) {
+    use craft_ui::layout::{SplitAxis, SplitSize};
+    match node {
+        Node::Tabs { panels, active } if panels.get(*active).is_some_and(|id| collapsed.contains(id)) => {
+            members.extend(panels.iter().cloned());
+            (node.clone(), Some(tab))
+        }
+        Node::Split { axis, size, first, second } => {
+            path.push(false);
+            let (a, ha) = collapse_node(first, collapsed, (tab, gap), path, fixed, members);
+            path.pop();
+            path.push(true);
+            let (b, hb) = collapse_node(second, collapsed, (tab, gap), path, fixed, members);
+            path.pop();
+            let (sized, height) = match (axis, ha, hb) {
+                (SplitAxis::Vertical, Some(ha), Some(hb)) => (Some(SplitSize::FixedFirst(ha)), Some(ha + hb + gap)),
+                (SplitAxis::Vertical, Some(ha), None) => (Some(SplitSize::FixedFirst(ha)), None),
+                (SplitAxis::Vertical, None, Some(hb)) => (Some(SplitSize::FixedSecond(hb)), None),
+                (SplitAxis::Horizontal, Some(ha), Some(hb)) => (None, Some(ha.max(hb))),
+                _ => (None, None),
+            };
+            if sized.is_some() {
+                fixed.push(path.clone());
+            }
+            (Node::Split { axis: *axis, size: sized.unwrap_or(*size), first: Box::new(a), second: Box::new(b) }, height)
+        }
+        _ => (node.clone(), None),
+    }
 }
 
 fn change(app: &mut VectorcraftApp, operation: &str, params: &Value) -> Result<Value, String> {
@@ -517,10 +620,15 @@ fn change(app: &mut VectorcraftApp, operation: &str, params: &Value) -> Result<V
 struct PanelContent<'a> {
     app: &'a mut VectorcraftApp,
     commands: Vec<(&'static str, Value)>,
+    /// The panels of groups collapsed to their tabs: no body.
+    shut: std::collections::BTreeSet<String>,
 }
 
 impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     fn body(&mut self, ui: &mut egui::Ui, panel: &String) {
+        if self.shut.contains(panel) {
+            return;
+        }
         let width = ui.available_width();
         let height = (ui.available_height() - 20.0).max(0.0);
         if crate::state::DockTab::from_id(panel).is_some() {
@@ -704,6 +812,8 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
     display
         .floating
         .retain(|group| !app.ui.floating_panels.iter().any(|native| decorated(native) && native.panels.iter().any(|id| group.panels.contains(id))));
+    // Splits sized to a collapsed group's tabs: their dividers don't resize the saved layout.
+    let mut fixed: Vec<Vec<bool>> = Vec::new();
     let mut draw = |ui: &mut egui::Ui| {
         if layout.root.is_some() && crate::dock::collapse_header(ui, collapsed) {
             let _ = app.run("window.collapseDock", json!({"collapsed":!collapsed}));
@@ -736,17 +846,36 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
         style.panels_label = tl!("Panels").to_string();
         style.resize_label = tl!("Resize panels").to_string();
         style.resize_window_label = tl!("Resize panel window").to_string();
+        // Panels set their own minimum height, so a collapsed group can be as short as its tabs.
+        style.min_pane = 0.0;
         let tree = ui.available_rect_before_wrap();
-        let mut content = PanelContent { app, commands: Vec::new() };
+        let mut shut = std::collections::BTreeSet::new();
+        let mut drawn = display.clone();
+        if let Some(root) = &display.root {
+            drawn.root =
+                Some(collapse_node(root, &app.ui.docking_collapsed, (style.tab_height, style.gap), &mut Vec::new(), &mut fixed, &mut shut).0);
+        }
+        let short = shut.clone();
+        let mut content = PanelContent { app, commands: Vec::new(), shut };
         let output = craft_ui::docking::DockArea::new(egui::Id::new("vectorcraft-panel-docking")).show_customized(
             ui,
-            &display,
+            &drawn,
             &style,
             |id| crate::state::all_panels().find(|p| p.0 == id).map(|p| tl!(p.1).to_string()).unwrap_or_else(|| id.clone()),
             |_| craft_ui::docking::Permissions::default(),
-            |_| craft_ui::docking::PanelLimits { min: egui::vec2(220.0, 80.0), ..Default::default() },
+            |id| craft_ui::docking::PanelLimits { min: egui::vec2(220.0, if short.contains(id) { 0.0 } else { 80.0 }), ..Default::default() },
             &mut content,
         );
+        // A double-click on a tab of the dock's tree collapses its group to its tabs, or expands it.
+        if let Some(root) = &drawn.root {
+            let area = egui::Id::new("vectorcraft-panel-docking");
+            let tabs = Layout { root: Some(root.clone()), floating: Vec::new() };
+            if let Some(panel) =
+                tabs.panels().into_iter().find(|p| ui.ctx().read_response(area.with(("tab", *p))).is_some_and(|r| r.double_clicked()))
+            {
+                content.commands.push(("window.panel.collapse", json!({"panel": panel})));
+            }
+        }
         let groups = if collapsed { Vec::new() } else { root_groups(ui.ctx(), &display, tree, style.tab_height) };
         ui.ctx().data_mut(|data| data.insert_temp(crate::floating::root_groups_id(), groups));
         for (id, params) in content.commands {
@@ -816,6 +945,9 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
         ui.ctx().data_mut(|data| data.remove::<LegacyDrag>(egui::Id::new("vectorcraft-panel-docking").with("legacy-origin")));
     }
     for action in output.actions {
+        if matches!(&action, Action::ResizeSplit { path, .. } if fixed.contains(path)) {
+            continue;
+        }
         if tab_drop
             .is_some_and(|(panel, _)| matches!(&action, Action::Float { panel: moved, .. } | Action::Move { panel: moved, .. } if moved == panel))
         {

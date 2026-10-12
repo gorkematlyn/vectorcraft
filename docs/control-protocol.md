@@ -776,6 +776,10 @@ positions of hidden panels. Resetting a built-in workspace restores its default 
   dock placement when possible, or to the supplied destination.
 - `window.panel.activate {panel}` reveals and selects a panel, restoring its saved
   position when possible. `window.panel.close {panel}` hides it.
+- `window.panel.collapse {panel, collapsed?}` shows the dock group holding a panel as its tabs
+  only, as a double-click on a tab does (without `collapsed` it toggles), and makes the panel the
+  group's shown one; showing another of its panels expands the group. Floating groups collapse with
+  `window.panel.float {collapsed}`. Returns `{panel, collapsed}`.
 
 Panel IDs are stable across themes. Invalid IDs, non-finite or invalid geometry, and
 invalid destinations return an error without changing the arrangement.

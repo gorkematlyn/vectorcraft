@@ -297,6 +297,10 @@ pub struct UiState {
     /// Panels whose saved return destination is the iconic rail.
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub docking_icons: std::collections::BTreeSet<String>,
+    /// The panels shown by dock groups collapsed to their tabs (a double-click on a tab); a group
+    /// showing another of its panels is expanded.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub docking_collapsed: std::collections::BTreeSet<String>,
     /// Invalidates in-flight gestures when a workspace is replaced.
     #[serde(skip)]
     pub docking_generation: u64,
@@ -597,6 +601,11 @@ impl UiState {
         self.docking = self.docking.filter(crate::panel_docking::valid);
         // The tabbed group's panels live in the icon column too once dropped there.
         self.docking_icons.retain(|id| rail_panel(id).is_some());
+        self.docking_collapsed = std::mem::take(&mut self.docking_collapsed)
+            .into_iter()
+            .filter(|id| crate::menus::normalize_panel(id) == Some(id.as_str()))
+            .take(64)
+            .collect();
         // Changes kept for workspaces that still exist, one per workspace (a hand-edited file).
         let mut seen = std::collections::BTreeSet::new();
         let custom: Vec<String> = self.custom_workspaces.iter().map(|w| w.name.clone()).collect();
@@ -631,6 +640,7 @@ impl Default for UiState {
             docking: None,
             docking_hidden: Default::default(),
             docking_icons: Default::default(),
+            docking_collapsed: Default::default(),
             docking_generation: 0,
             toolbar_pos: None,
             status_bar: true,

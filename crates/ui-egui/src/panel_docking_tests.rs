@@ -760,3 +760,111 @@ fn a_panel_the_icon_column_has_no_place_for_still_shows_there_once_dropped_on_it
     let column = h.ctx.data(|d| d.get_temp::<egui::Rect>(crate::floating::icons_rect_id())).unwrap();
     assert!(h.query_all_by_label("Character Styles").any(|node| column.contains_rect(node.rect())), "its icon is in the column");
 }
+
+fn double_click(h: &mut Harness<'static, VectorcraftApp>, at: Pos2) {
+    h.event(Event::PointerMoved(at));
+    h.run_steps(1);
+    for _ in 0..2 {
+        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+        h.run_steps(1);
+        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        h.run_steps(1);
+    }
+    // Past the double- and triple-click times, so the next press is a click of its own.
+    h.run_steps(45);
+}
+
+/// The Layers panel's body is drawn (its search field).
+fn layers_drawn(h: &Harness<'static, VectorcraftApp>) -> bool {
+    h.ctx.read_response(egui::Id::new("layers-search").with("edit")).is_some()
+}
+
+fn click(h: &mut Harness<'static, VectorcraftApp>, at: Pos2) {
+    h.event(Event::PointerMoved(at));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+}
+
+/// The middle of `panel`'s tab in the shared dock.
+fn tab_center(h: &Harness<'static, VectorcraftApp>, panel: &str) -> Pos2 {
+    h.ctx.read_response(egui::Id::new("vectorcraft-panel-docking").with(("tab", &panel.to_string()))).unwrap().rect.center()
+}
+
+#[test]
+fn a_double_click_on_a_dock_tab_collapses_its_group_to_its_tabs_and_another_expands_it() {
+    let mut app = app();
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    app.run("window.panel.move", json!({"panel":"swatches", "anchor":"layers", "zone":"top"})).unwrap();
+    let saved = app.ui.docking.clone();
+    let mut h = harness(app, vec2(1280.0, 800.0));
+    let groups = root_groups(&h);
+    assert_eq!(groups.len(), 2, "{groups:?}");
+    let (top, lower) = (groups[0].rect, groups[1].rect);
+    assert!(top.height() > 100.0, "{top:?}");
+
+    // The upper group shrinks to its tabs and the lower one takes the room; the saved layout keeps
+    // its sizes.
+    let at = tab_center(&h, "swatches");
+    double_click(&mut h, at);
+    assert!(h.state().ui.docking_collapsed.contains("swatches"));
+    let groups = root_groups(&h);
+    assert!(groups[0].rect.height() < 40.0, "{groups:?}");
+    assert!(groups[1].rect.top() < lower.top() - 50.0, "{groups:?}");
+    assert_eq!(h.state().ui.docking, saved);
+    // Again, and it is as tall as before.
+    let at = tab_center(&h, "swatches");
+    double_click(&mut h, at);
+    assert!(h.state().ui.docking_collapsed.is_empty());
+    let groups = root_groups(&h);
+    assert!((groups[0].rect.height() - top.height()).abs() < 2.0, "{groups:?} {top:?}");
+
+    // The lower group, tabbed: its body goes, and a click on another of its tabs brings it back
+    // showing that panel.
+    let at = tab_center(&h, "layers");
+    double_click(&mut h, at);
+    assert!(h.state().ui.docking_collapsed.contains("layers"));
+    assert!(!layers_drawn(&h), "no Layers body");
+    let at = tab_center(&h, "properties");
+    click(&mut h, at);
+    assert!(h.state().ui.docking_collapsed.is_empty());
+    assert_eq!(root_group_of(h.state(), "properties"), ["properties", "layers", "libraries"]);
+    assert!(valid(h.state().ui.docking.as_ref().unwrap()));
+}
+
+#[test]
+fn a_double_click_on_a_legacy_dock_tab_collapses_the_tabbed_group() {
+    let mut app = app();
+    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+    let mut h = harness(app, vec2(1280.0, 800.0));
+    let tab = h.query_all_by_label("Layers").find(|node| node.rect().height() <= 45.0).unwrap().rect().center();
+    click(&mut h, tab);
+    h.run_steps(45);
+    assert!(layers_drawn(&h), "Layers shows");
+    double_click(&mut h, tab);
+    assert!(h.state().ui.docking.is_none(), "still the legacy dock");
+    assert!(h.state().ui.docking_collapsed.contains("layers"));
+    assert!(!layers_drawn(&h), "no Layers body");
+    double_click(&mut h, tab);
+    assert!(h.state().ui.docking_collapsed.is_empty());
+    assert!(layers_drawn(&h), "Layers shows again");
+}
+
+#[test]
+fn the_collapse_command_validates_and_survives_a_reload() {
+    let mut app = app();
+    assert_eq!(app.run("window.panel.collapse", json!({"panel":"layers"})).unwrap(), json!({"panel":"layers", "collapsed":true}));
+    assert_eq!(app.ui.dock_tab, crate::state::DockTab::Layers, "it shows the panel");
+    let saved = serde_json::to_value(&app.ui).unwrap();
+    let restored = serde_json::from_value::<crate::state::UiState>(saved).unwrap().sanitized();
+    assert!(restored.docking_collapsed.contains("layers"));
+    assert_eq!(app.run("window.panel.collapse", json!({"panel":"layers", "collapsed":false})).unwrap()["collapsed"], false);
+    for params in [json!({"panel":"nope"}), json!({"panel":"layers", "collapsed":"yes"}), json!({"panel":"swatches"})] {
+        assert!(app.run("window.panel.collapse", params.clone()).is_err(), "{params}");
+    }
+    app.run("window.panel.float", json!({"panel":"layers", "x":300, "y":300})).unwrap();
+    assert!(app.run("window.panel.collapse", json!({"panel":"layers"})).is_err(), "floating groups collapse with float");
+    assert!(app.ui.docking_collapsed.is_empty());
+}

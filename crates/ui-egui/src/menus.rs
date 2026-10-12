@@ -305,6 +305,12 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("window.panel.activate", "Activate Panel", "", "{panel} show and select a panel in its current group"),
     ("window.panel.close", "Close Panel", "", "{panel} hide a panel"),
     (
+        "window.panel.collapse",
+        "Collapse Panel Group",
+        "",
+        "{panel, collapsed?: bool} show the dock group holding a panel as its tabs only (or its panel again), as a double-click on its tab does; the panel becomes the group's shown one. Without `collapsed` it toggles. Floating groups collapse through window.panel.float {collapsed}. Returns {panel, collapsed}",
+    ),
+    (
         "window.panel.float",
         "Float Panel",
         "",
