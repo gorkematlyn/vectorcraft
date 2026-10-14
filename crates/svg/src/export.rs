@@ -50,6 +50,7 @@ fn write(doc: &Document, opts: &ExportOptions, native: Option<&[u8]>, id_prefix:
         body: String::new(),
         defs: String::new(),
         classes: Vec::new(),
+        class_ids: HashMap::new(),
         used_ids: HashSet::new(),
         names: HashMap::new(),
         depth: 1,
@@ -259,8 +260,10 @@ struct Writer<'a> {
     xf: Affine,
     body: String,
     defs: String,
-    /// Unique CSS declaration blocks; class name is `cls-{index + 1}`.
+    /// Unique CSS declaration blocks, in first-use order (used for deterministic output).
     classes: Vec<String>,
+    /// 1-based class/entity number by declaration; avoids a linear scan for each style.
+    class_ids: HashMap<String, usize>,
     used_ids: HashSet<String>,
     names: HashMap<NodeId, String>,
     depth: usize,
@@ -657,13 +660,13 @@ impl Writer<'_> {
 
     /// The 1-based number of a distinct declaration block (a CSS class or a style entity).
     fn class(&mut self, decl: String) -> usize {
-        match self.classes.iter().position(|c| *c == decl) {
-            Some(i) => i + 1,
-            None => {
-                self.classes.push(decl);
-                self.classes.len()
-            }
+        if let Some(&i) = self.class_ids.get(decl.as_str()) {
+            return i;
         }
+        let i = self.classes.len() + 1;
+        self.class_ids.insert(decl.clone(), i);
+        self.classes.push(decl);
+        i
     }
 
     /// `<metadata>`: the Dublin Core terms of File Info ([`ExportOptions::metadata`]) and the
@@ -914,7 +917,7 @@ impl Writer<'_> {
         let doc = self.doc;
         let brushes = self.brushes.get_or_insert_with(|| vectorcraft_brush::library(doc));
         match st.brush.as_deref().and_then(|name| brushes.iter().find(|b| b.name == name)) {
-            Some(b) => StrokePlan::Brush(vectorcraft_brush::stroke_pieces(b, bp, st)),
+            Some(b) => StrokePlan::Brush(vectorcraft_brush::stroke_pieces(doc, b, bp, st)),
             None => StrokePlan::Written(stroke::for_writer(bp, st)),
         }
     }
@@ -1586,7 +1589,7 @@ impl Writer<'_> {
             }
             return 0;
         }
-        let bounds = n.visual_bounds();
+        let bounds = n.visual_bounds_with(&self.doc.symbol_boxes());
         let reach: f64 = fx.iter().map(|f| f.outset(bounds.unwrap_or_default())).sum::<f64>() + 2.0;
         let region = bounds.map(|b| self.xf.transform_rect_bbox(b).inflate(reach, reach));
         let mut opened = 0;
