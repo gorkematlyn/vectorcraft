@@ -14,6 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::import_color::{entries, items};
 use hayro_interpret::CacheKey;
 use hayro_syntax::Pdf;
 use hayro_syntax::content::TypedIter;
@@ -73,7 +74,7 @@ impl Ocgs {
         let config = props.get::<Dict<'_>>(b"D").unwrap_or_default();
         let refs = |d: &Dict<'_>, key: &[u8]| -> Vec<ObjectIdentifier> {
             d.get::<Array<'_>>(key)
-                .map(|a| a.raw_iter().filter_map(|i| i.as_obj_ref()).map(ObjectIdentifier::from).take(MAX_GROUPS).collect())
+                .map(|a| items(&a).filter_map(|i| i.as_obj_ref()).map(ObjectIdentifier::from).take(MAX_GROUPS).collect())
                 .unwrap_or_default()
         };
         let all = refs(&props, b"OCGs");
@@ -106,7 +107,7 @@ impl Ocgs {
     /// stays where it is first listed. `seen`: the entries read so far.
     fn nest(&mut self, order: &Array<'_>, parent: Option<usize>, depth: usize, xref: &hayro_syntax::xref::XRef, seen: &mut usize) {
         let mut prev = None;
-        for item in order.raw_iter() {
+        for item in items(order) {
             *seen += 1;
             if *seen > 4 * MAX_GROUPS {
                 return;
@@ -125,7 +126,7 @@ impl Ocgs {
             if let Some(sub) = sub
                 && depth < MAX_NESTING
             {
-                let label = matches!(sub.raw_iter().next(), Some(MaybeRef::NotRef(Object::String(_))));
+                let label = matches!(items(&sub).next(), Some(MaybeRef::NotRef(Object::String(_))));
                 let under = prev.take().filter(|_| !label).or(parent);
                 self.nest(&sub, under, depth + 1, xref, seen);
             }
@@ -172,7 +173,7 @@ impl Ocgs {
     /// object) belongs to: a membership dictionary's first group.
     fn group_of(&mut self, d: &Dict<'_>, id: ObjectIdentifier, xref: &hayro_syntax::xref::XRef) -> Option<usize> {
         if d.get::<Name<'_>>(b"Type").is_some_and(|t| t.as_ref() == b"OCMD") {
-            let first = d.get::<Array<'_>>(b"OCGs").and_then(|a| a.raw_iter().find_map(|i| i.as_obj_ref())).or_else(|| d.get_ref(b"OCGs"))?;
+            let first = d.get::<Array<'_>>(b"OCGs").and_then(|a| items(&a).find_map(|i| i.as_obj_ref())).or_else(|| d.get_ref(b"OCGs"))?;
             let id = ObjectIdentifier::from(first);
             return self.note(id, &xref.get::<Dict<'_>>(id)?);
         }
@@ -315,7 +316,7 @@ impl Walker<'_, '_> {
             Some(id) if !membership => !self.off.contains(&id),
             _ => {
                 let ids: Vec<ObjectIdentifier> = match d.get::<Array<'_>>(b"OCGs") {
-                    Some(a) => a.raw_iter().filter_map(|i| i.as_obj_ref()).map(ObjectIdentifier::from).collect(),
+                    Some(a) => items(&a).filter_map(|i| i.as_obj_ref()).map(ObjectIdentifier::from).collect(),
                     None => d.get_ref(b"OCGs").map(ObjectIdentifier::from).into_iter().collect(),
                 };
                 let on = |i: &ObjectIdentifier| !self.off.contains(i);
@@ -375,7 +376,7 @@ impl Walker<'_, '_> {
     }
 
     fn note_fonts(&mut self, res: &Resources<'_>) {
-        for (key, _) in res.fonts.entries() {
+        for (key, _) in entries(&res.fonts) {
             if let Some(f) = res.fonts.get::<Dict<'_>>(key.as_ref())
                 && let Some(name) = f.get::<Name<'_>>(b"BaseFont")
             {
