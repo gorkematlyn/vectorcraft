@@ -3603,6 +3603,7 @@ effect	Soft	柔和
 	Activate Panel	啟用面板
 	Change Panel Layout	變更面板配置
 	Close Panel	關閉面板
+	Collapse Panel Group	摺疊面板群組
 	Move Panel	移動面板
 	Group with	群組至
 	Resize panels	調整面板大小
