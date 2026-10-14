@@ -380,21 +380,26 @@ impl<'p> Colors<'p> {
 }
 
 /// An object written in place (references are visited as objects of their own).
-/// The items of `a`, or none when one of them can't be read (a damaged file): hayro's own
-/// iterator unwraps each read, and panics on such an array.
+/// Can every item of `a` be read? Not in a damaged file, and hayro's own iterator over the items
+/// unwraps each read and panics there.
 ///
-/// The items are read once without the array's context first. That reading fails wherever the
-/// array's own would (a string it can't decrypt is kept as it is either way; a stream whose
-/// `/Length` it can't follow falls back to finding `endstream`, as the array's reading does when
-/// its length is wrong), so a damaged array is never handed to the iterator.
-pub(crate) fn items<'a>(a: &Array<'a>) -> impl Iterator<Item = MaybeRef<Object<'a>>> + use<'a> {
+/// The items are read without the array's context. That reading fails wherever the array's own
+/// would (a string it can't decrypt is kept as it is either way; a stream whose `/Length` it can't
+/// follow falls back to finding `endstream`, as the array's reading does when its length is wrong).
+pub(crate) fn readable(a: &Array<'_>) -> bool {
     let mut r = Reader::new(a.data());
-    let readable = std::iter::from_fn(|| {
+    std::iter::from_fn(|| {
         r.skip_white_spaces_and_comments();
         (!r.at_end()).then(|| r.read_without_context::<MaybeRef<Object<'_>>>().is_some())
     })
-    .all(|read| read);
-    readable.then(|| a.raw_iter()).into_iter().flatten()
+    .all(|read| read)
+}
+
+/// The items of `a`, or none when one of them can't be read ([`readable`]). A file with such an
+/// array is refused before it is imported ([`crate::pages`]), so that none never hides what the
+/// interpreter would still read of it (its leading items).
+pub(crate) fn items<'a>(a: &Array<'a>) -> impl Iterator<Item = MaybeRef<Object<'a>>> + use<'a> {
+    readable(a).then(|| a.raw_iter()).into_iter().flatten()
 }
 
 /// The entries of `d` by key, without those whose value can't be read (a damaged file): hayro's

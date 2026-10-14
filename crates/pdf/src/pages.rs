@@ -10,7 +10,7 @@ use hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
 use kurbo::{Affine, Rect};
 use vectorcraft_doc::setup::MAX_BLEED;
 
-use crate::import_color::{direct, entries, items};
+use crate::import_color::{direct, entries, items, readable};
 use crate::{Choice, CropTo, ImportOptions, PdfError};
 
 /// What `info` tells about one page.
@@ -130,7 +130,8 @@ fn hostile(pdf: &Pdf) -> Option<&'static str> {
 }
 
 /// Does `pdf` hold functions or colour spaces built on one another past [`MAX_LINKS`] (or on
-/// themselves), or a calculator function nested past [`MAX_PROCEDURES`]? Every object is looked
+/// themselves), a calculator function nested past [`MAX_PROCEDURES`], or an array with an item
+/// that can't be read (what it holds can't be looked at whole)? Every object is looked
 /// at, wherever it is used from: the interpreter builds them from resources, shadings, images,
 /// patterns, masks and graphics states alike.
 fn nests_without_end(pdf: &Pdf) -> bool {
@@ -143,6 +144,9 @@ fn nests_without_end(pdf: &Pdf) -> bool {
             return true;
         }
         match &o {
+            // An array with an item that can't be read is left out of `links` and of this walk:
+            // the interpreter would still read its leading items, so the file is refused.
+            Object::Array(a) if !readable(a) => return true,
             Object::Array(a) => pending.extend(items(a).filter_map(direct)),
             _ => pending.extend(dict_or_stream(&o).into_iter().flat_map(|(d, _)| entries(d)).filter_map(|(_, v)| direct(v))),
         }
