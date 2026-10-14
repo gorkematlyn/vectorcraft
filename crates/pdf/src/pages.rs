@@ -10,7 +10,7 @@ use hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
 use kurbo::{Affine, Rect};
 use vectorcraft_doc::setup::MAX_BLEED;
 
-use crate::import_color::direct;
+use crate::import_color::{direct, entries, items};
 use crate::{Choice, CropTo, ImportOptions, PdfError};
 
 /// What `info` tells about one page.
@@ -52,7 +52,7 @@ const MAX_PROCEDURES: usize = 64;
 fn links<'a>(o: &Object<'a>, xref: &'a XRef) -> Vec<MaybeRef<Object<'a>>> {
     const SPACES: [&[u8]; 6] = [b"Indexed", b"I", b"Separation", b"DeviceN", b"Pattern", b"ICCBased"];
     if let Object::Array(a) = o {
-        let mut items = a.raw_iter();
+        let mut items = items(a);
         let kind = match items.next() {
             Some(MaybeRef::NotRef(Object::Name(n))) => Some(n),
             Some(MaybeRef::Ref(r)) => xref.get::<Name<'a>>(r.into()),
@@ -61,7 +61,7 @@ fn links<'a>(o: &Object<'a>, xref: &'a XRef) -> Vec<MaybeRef<Object<'a>>> {
         return if kind.is_some_and(|n| SPACES.contains(&n.as_ref())) { items.collect() } else { vec![] };
     }
     let Some((d, _)) = dict_or_stream(o) else { return vec![] };
-    let functions = d.get::<Array<'a>>(b"Functions").map(|a| a.raw_iter().collect::<Vec<_>>()).unwrap_or_default();
+    let functions = d.get::<Array<'a>>(b"Functions").map(|a| items(&a).collect::<Vec<_>>()).unwrap_or_default();
     functions.into_iter().chain(d.get_raw::<Object<'a>>(b"Alternate")).collect()
 }
 
@@ -143,8 +143,8 @@ fn nests_without_end(pdf: &Pdf) -> bool {
             return true;
         }
         match &o {
-            Object::Array(a) => pending.extend(a.raw_iter().filter_map(direct)),
-            _ => pending.extend(dict_or_stream(&o).into_iter().flat_map(|(d, _)| d.entries()).filter_map(|(_, v)| direct(v))),
+            Object::Array(a) => pending.extend(items(a).filter_map(direct)),
+            _ => pending.extend(dict_or_stream(&o).into_iter().flat_map(|(d, _)| entries(d)).filter_map(|(_, v)| direct(v))),
         }
     }
     false
