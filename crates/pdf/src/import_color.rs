@@ -9,11 +9,11 @@
 
 use std::fmt::{self, Debug, Write as _};
 
-use hayro_interpret::Function;
-use hayro_interpret::color::ColorSpace;
-use hayro_syntax::Pdf;
-use hayro_syntax::object::{Array, Dict, MaybeRef, Name, Object, Stream};
-use hayro_syntax::reader::{Reader, ReaderExt};
+use craft_pdf::interpret::Function;
+use craft_pdf::interpret::color::ColorSpace;
+use craft_pdf::syntax::Pdf;
+use craft_pdf::syntax::object::{Array, Dict, MaybeRef, Name, Object, Stream};
+use craft_pdf::syntax::reader::{Reader, ReaderExt};
 use smallvec::SmallVec;
 use vectorcraft_color::swatch::REGISTRATION;
 use vectorcraft_color::{Color, Paint, Swatch};
@@ -163,7 +163,7 @@ impl<'p> Colors<'p> {
     }
 
     /// A solid colour in its own model; `None`: use its RGB.
-    pub fn solid(&mut self, c: &hayro_interpret::color::Color) -> Option<Native> {
+    pub fn solid(&mut self, c: &craft_pdf::interpret::color::Color) -> Option<Native> {
         let mapped = debug_text(c).and_then(|t| {
             let (space, comps) = split_color(&t)?;
             let space = self.space_of(space, comps.len());
@@ -462,7 +462,7 @@ fn lab_profile(profile: &Stream<'_>) -> bool {
     let mut head = vec![];
     match profile.filters().as_slice() {
         [] => head.extend(raw.iter().take(20)),
-        [hayro_syntax::Filter::FlateDecode] => {
+        [craft_pdf::syntax::Filter::FlateDecode] => {
             let _ = flate2::read::ZlibDecoder::new(&*raw).take(20).read_to_end(&mut head); // a damaged profile reads as not Lab
         }
         _ => return false,
